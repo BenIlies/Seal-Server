@@ -1,9 +1,10 @@
 ﻿  main.cpp
-C:\Users\33658\source\repos\ServerCloud\ServerCloud\main.cpp(102,97): warning C4267: 'argument': conversion from 'size_t' to 'int', possible loss of data
-C:\Users\33658\source\repos\ServerCloud\ServerCloud\main.cpp(166,90): warning C4267: 'argument': conversion from 'size_t' to 'int', possible loss of data
+C:\Users\33658\source\repos\ServerCloud\ServerCloud\main.cpp(111,97): warning C4267: 'argument': conversion from 'size_t' to 'int', possible loss of data
+C:\Users\33658\source\repos\ServerCloud\ServerCloud\main.cpp(175,90): warning C4267: 'argument': conversion from 'size_t' to 'int', possible loss of data
+C:\Users\33658\source\repos\ServerCloud\ServerCloud\main.cpp(200,57): warning C4267: 'argument': conversion from 'size_t' to 'int', possible loss of data
   Generating code
-  1 of 3070 functions (<0.1%) were compiled, the rest were copied from previous compilation.
+  1 of 3082 functions (<0.1%) were compiled, the rest were copied from previous compilation.
     0 functions were new in current compilation
-    6 functions had inline decision re-evaluated but remain unchanged
+    12 functions had inline decision re-evaluated but remain unchanged
   Finished generating code
   ServerCloud.vcxproj -> C:\Users\33658\source\repos\ServerCloud\x64\Release\ServerCloud.exe

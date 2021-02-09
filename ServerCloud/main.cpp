@@ -4,26 +4,35 @@
 #include <WS2tcpip.h>
 #include <vector>
 #define STOP_MSG "Stop data"
-#define END_BUFFER "End of buffer"
 #define SIZE_BUFFER 8192
 #pragma comment (lib, "ws2_32.lib")
 
-/*
-	Important :
-	There might be an issue appearing if one of the buffer sent over the tcp connection is a multiple of SIZE_BUFFER.
-	Hence, in the future it could be interesting to fix it
-*/
-
 using namespace seal;
+
+/*
+	This method will send to the key holder the number of bytes that he will send him afterwards.
+	As parameters we have :
+		- socket which is the socket of the client to which we send data.
+		- data which is the length of bytes which are going yo be sent.
+*/
+void bytesToSend(SOCKET socket, size_t data);
+
+/*
+	This method will retrieve the number of bytes that the client will send
+	As parameters we have :
+		- socket which is the socket of the client to who sent the data.
+*/
+int bytesToReceive(SOCKET socket);
 
 int main()
 {
+	// If ZLIB is missing we abort the computation.
 	#ifndef SEAL_USE_ZLIB
 		std::cerr << "ZLIB support is not enabled; this example is not available." << std::endl;
 		std::cerr << std::endl;
 		return -10;
 	#else
-		// Initialize winsock
+		// Initialize winsock.
 		WSADATA wsData;
 		WORD ver = MAKEWORD(2, 2);
 
@@ -34,7 +43,7 @@ int main()
 			return -1;
 		}
 
-		// Create a socket
+		// Create a socket.
 		SOCKET listening = socket(AF_INET, SOCK_STREAM, 0);
 		if (listening == INVALID_SOCKET)
 		{
@@ -42,7 +51,7 @@ int main()
 			return -2;
 		}
 
-		// Bind the ip address and port to a socket
+		// Bind the ip address and port to a socket.
 		sockaddr_in hint;
 		hint.sin_family = AF_INET;
 		hint.sin_port = htons(54000);
@@ -50,10 +59,10 @@ int main()
 
 		bind(listening, (sockaddr*)&hint, sizeof(hint));
 
-		// Tell winsock the socket is for listening
+		// Tell winsock the socket is for listening.
 		listen(listening, SOMAXCONN);
 
-		// Wait for a connection
+		// Wait for a connection.
 		sockaddr_in client;
 		int clientSize = sizeof(client);
 
@@ -75,11 +84,11 @@ int main()
 			std::cout << host << " connected on port " << ntohs(client.sin_port) << std::endl;
 		}
 
-		// Close listening socket
+		// Close listening socket.
 		closesocket(listening);
 
 
-		// While loop: accept and echo message back to client
+		// While loop: accept and echo message back to client.
 		char buf[SIZE_BUFFER];
 
 
@@ -87,7 +96,7 @@ int main()
 		std::stringstream pk_stream;
 
 
-		// We create the seal context that will be sent to the client
+		// We create the seal context that will be sent to the client.
 		EncryptionParameters parms(scheme_type::CKKS);
 		size_t poly_modulus_degree = 8192;
 		parms.set_poly_modulus_degree(poly_modulus_degree);
@@ -98,46 +107,47 @@ int main()
 		
 		int bytesReceived = 0;
 
-		// We send the SEAL context to the client
+		// We send the SEAL context to the client.
 		int bytesSent = send(clientSocket, parms_stream.str().c_str(), parms_stream.str().length() , 0);
 		std::cout << "SEAL context sent to the client, bytes sent : " << bytesSent << std::endl;
 
-		// We receive the public key from the client and register it
+
+		// We receive the public key from the client and register it.
+		int bytesToReceiveFromKeyHolder = bytesToReceive(clientSocket);
 		do
 		{
 			ZeroMemory(buf, SIZE_BUFFER);
 			bytesReceived = recv(clientSocket, buf, SIZE_BUFFER, 0);
 			pk_stream << std::string(buf, bytesReceived);
-			std::cout << bytesReceived << std::endl;
-		} while (bytesReceived == SIZE_BUFFER);
+			bytesToReceiveFromKeyHolder -= bytesReceived;
+		} while (bytesToReceiveFromKeyHolder > 0);
 		std::cout << "Public key successfully received from client" << std::endl;
 
 
 		std::vector <Ciphertext> all_age_encrypted;
 		Ciphertext encrypted;
 
-		// We receive the data from the client and register it
+		// We receive the data from the client and register it.
 		bool allDataRetrieved = false;
 		while (!allDataRetrieved)
 		{
 			std::stringstream data_stream;
+			bytesToReceiveFromKeyHolder = bytesToReceive(clientSocket);
 			do
 			{
-
 				ZeroMemory(buf, SIZE_BUFFER);
 				bytesReceived = recv(clientSocket, buf, SIZE_BUFFER, 0);
+				bytesToReceiveFromKeyHolder -= bytesReceived;
 				if (std::string(buf, bytesReceived) != STOP_MSG)
 				{
-					if (std::string(buf, bytesReceived) != END_BUFFER)
-					{
-						data_stream << std::string(buf, bytesReceived);
-					}
+					data_stream << std::string(buf, bytesReceived);
 				}
 				else
 				{
 					allDataRetrieved = true;
+					break;
 				}
-			} while (bytesReceived == SIZE_BUFFER);
+			} while (bytesToReceiveFromKeyHolder > 0);
 			bytesSent = send(clientSocket, STOP_MSG, (unsigned)strlen(STOP_MSG), 0);
 			if (!allDataRetrieved)
 			{
@@ -146,15 +156,13 @@ int main()
 			}
 		}
 
-
-
 		std::cout << "Data successfully received from client" << std::endl;
 		
-		
-		
-		// We load the encrypted values
-		// Do operations over those values
-		// And save it
+		/*
+			We load the encrypted values.
+			Do operations over those values.
+			And save it in order to send it back to the client.
+		*/
 		std::stringstream data_stream;
 		Evaluator evaluator(context);
 		Ciphertext age_encrypted_sum;
@@ -162,21 +170,47 @@ int main()
 
 		auto size_encrypted_prod = age_encrypted_sum.save(data_stream);
 
-		// We send the result of the encrypted product 
+		// We send the result of the encrypted product.
+		bytesToSend(clientSocket, data_stream.str().length());
 		bytesSent = send(clientSocket, data_stream.str().c_str(), data_stream.str().length(), 0);
 		std::cout << "Sum encrypted sent to the client, bytes sent : " << bytesSent << std::endl;
 
 		
 		
 
-		// Close the socket
+		// Close down the connection.
 		closesocket(clientSocket);
-
-		// Cleanup winsock
 		WSACleanup();
-
 
 		return 0;
 	#endif
 
+}
+
+/*
+	This method will send to the key holder the number of bytes that he will send him afterwards.
+	As parameters we have :
+		- socket which is the socket of the client to which we send data.
+		- data which is the length of bytes which are going yo be sent.
+*/
+void bytesToSend(SOCKET socket, size_t data)
+{
+	std::string dataToSend = std::to_string(data);
+	char buf[SIZE_BUFFER];
+	send(socket, dataToSend.c_str(), dataToSend.length(), 0);
+	recv(socket, buf, SIZE_BUFFER, 0);
+}
+
+/*
+	This method will retrieve the number of bytes that the client will send
+	As parameters we have :
+		- socket which is the socket of the client to who sent the data.
+*/
+int bytesToReceive(SOCKET socket)
+{
+	char buf[SIZE_BUFFER];
+	recv(socket, buf, SIZE_BUFFER, 0);
+	int bytesReceived = std::stoi(buf);
+	send(socket, STOP_MSG, (unsigned)strlen(STOP_MSG), 0);
+	return bytesReceived;
 }
